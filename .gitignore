@@ -1,3 +1,5 @@
 *.pyc
+# saved weights ~ 500mb
+*.pt
 
 .DS_Store
