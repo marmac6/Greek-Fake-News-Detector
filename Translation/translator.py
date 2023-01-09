@@ -9,21 +9,22 @@ import deepl
 auth_key = 'e9c08ffa-9fc9-3eb8-eb0c-eed20d006334:fx'
 translator = deepl.Translator(auth_key)
 
-#mia random allagh
+
 def count_chars(file):
     with open(file, 'r', encoding='utf-8') as f:
         csv_reader = csv.reader(f)
 
         char_counter = 0
-        for i,row in enumerate(csv_reader):
+        for i, row in enumerate(csv_reader):
             statement = row[0]
             statement = _compress_statement(statement)
             char_counter += len(statement)
-            
+
     return char_counter
 
 
-def _translate_to_greek(statement: str, mock=True) -> str:  #to mock einai orisma
+def _translate_to_greek(statement: str,
+                        mock=True) -> str:  #to mock einai orisma
     if mock:
         return statement.replace('a', '2')
     else:
@@ -69,26 +70,26 @@ def translate_dataset(entries):
     output_filename = f'{output_folder}/translated_{file_name}'
     current_index = _get_current_index(output_filename)
     volume = len(entries)
-    
 
     try:
         with open(output_filename, 'a', newline='', encoding='utf-8') as f:
             mywriter = csv.writer(f)
             if not current_index:
-                mywriter.writerow(['Statement', 'Label'])  # add header
+                mywriter.writerow(['title', 'is_fake'])  # add header
 
             for ind, entry in enumerate(entries):
                 if ind < current_index - 1:
                     continue
-                print(f'{ind} / {volume}')   #gia na einai akribias den thelei ena +1?
+                print(f'{ind} / {volume}'
+                      )  #gia na einai akribias den thelei ena +1?
                 translated = translate_statement(entry[0])
                 mywriter.writerow([translated, entry[1]])
     except FileNotFoundError as e:
         print(f'Translation aborded. Error: {e}')
 
 
-file_name = 'train.csv'
-output_folder = 'translated_with_api'
+file_name = '../Data/liar_en.csv'
+output_folder = '../Data/translated_with_api'
 csv_entries = read_csv(file_name)
 translate_dataset(csv_entries)
 # c = count_chars(file_name)
