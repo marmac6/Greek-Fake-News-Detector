@@ -45,17 +45,8 @@ lm_model_greek = AutoModel.from_pretrained(
     'nlpaueb/bert-base-greek-uncased-v1', return_dict=False)
 
 # %%
-df: pd.DataFrame = pd.read_csv('dataset/unified.csv')
-df = df.dropna()
-
-# %%
-df = pd.read_csv("./dataset/greek_fake_news.csv")
-df_2 = pd.read_csv("./dataset/greek_hoaxes_process.csv")
-df_3 = pd.read_csv("./dataset/greek_real_news.csv")
-
-# %%
-df = pd.concat([df[['title', 'is_fake']], df_2, df_3],
-               axis=0)  #concat βαζει τα 3 αρχεια το ενα κάτω από το άλλο
+df: pd.DataFrame = pd.read_csv('../Dataset/mixed.csv', delimiter=';')
+df = df.dropna()  # removes None values
 
 # %%
 # Check that there are no nan values
@@ -187,6 +178,7 @@ weights = torch.tensor(class_weights, dtype=torch.float)
 weigths = weights.to(device)
 
 criterion = nn.NLLLoss(weight=weights)
+criterion = criterion.to(device)
 
 # %%
 # writer = SummaryWriter('runs/greek-fake-news')
