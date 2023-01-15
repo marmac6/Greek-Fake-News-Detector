@@ -23,18 +23,18 @@ from helpers import preprocess_titles
 from helpers import strip_accents_and_lowercase
 
 
-DATASET = 'liar_translated'
+DATASET = 'greek'
 BATCH_SIZE = 64
-EPOCHS = 10
-DROPOUT = 0.4
+EPOCHS = 20
+DROPOUT = 0.5
 HIDDEN_SIZE = 512
-COMMENT = 'BN_NOLM_NOSTP'
+COMMENT = 'SIGMOID_BCE'
 RUN_ID = f'{DATASET}_{BATCH_SIZE}_{EPOCHS}_{DROPOUT}_{HIDDEN_SIZE}_{COMMENT}'
 WEIGHTS_SAVE_PATH = f'weights/w_{RUN_ID}.pt'
 OUTPUTS_PATH = f'outputs/Neural_Networks/Mine/{RUN_ID}'
 
 # create output directory for current run
-Path(OUTPUTS_PATH).mkdir(exist_ok=False)
+Path(OUTPUTS_PATH).mkdir(exist_ok=True)
 
 # suppress noisy warnings
 transformers.logging.set_verbosity_error()
@@ -111,15 +111,16 @@ class BERT_Fake(nn.Module):
 
         self.bert = bert
         # DropoutLayer
-        self.dropout = nn.Dropout(0.8)
+        self.dropout = nn.Dropout(DROPOUT)
         # ReLU
         self.relu = nn.ReLU()
         # Dense Layers
-        self.fc1 = nn.Linear(768, 512)
-        self.fc2 = nn.Linear(512, 2)
+        self.fc1 = nn.Linear(768, HIDDEN_SIZE)
+        self.fc2 = nn.Linear(HIDDEN_SIZE, 2)
         # Batch normalization
-        self.batch_norm = nn.BatchNorm1d(512)
+        self.batch_norm = nn.BatchNorm1d(HIDDEN_SIZE)
         self.softmax = nn.LogSoftmax(dim=1)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, send_id, mask):
         # pass inputs to model
@@ -130,8 +131,10 @@ class BERT_Fake(nn.Module):
         x = self.batch_norm(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        x = self.softmax(x)
-
+        # x = self.softmax(x)
+        # x = self.relu(x)
+        x = self.sigmoid(x)
+        # exit()
         return x
 
 # Pass the pre-trained BERT to our custom architecture
@@ -140,7 +143,7 @@ model = BERT_Fake(lm_model_greek)
 # Push model to GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
 # With class weighting enabled, the sum is replaced by a weighted sum
 # instead so that each sample contributes to the loss proportionally
@@ -153,10 +156,10 @@ class_weights = compute_class_weight(class_weight="balanced",
 weights = torch.tensor(class_weights, dtype=torch.float)
 weigths = weights.to(device)
 
-criterion = nn.NLLLoss(weight=weights)
+criterion = nn.CrossEntropyLoss(weight=weights)
 criterion = criterion.to(device)
 
-# writer = SummaryWriter('runs/greek-fake-news')
+writer = SummaryWriter('runs/greek-fake-news')
 
 def train():
     model.train()
@@ -178,8 +181,6 @@ def train():
 
         # Forward
         outputs = model(sent_id, mask)
-        # with torch.autocast('cuda'):
-        #     loss = criterion(outputs, torch.tensor(labels).cuda())
         loss = criterion(outputs, labels)
 
         # Backward
@@ -191,7 +192,7 @@ def train():
 
         # Clip the gradients to 1.0. It helps in preventing the exploding gradient problem
         # TO TEST IT
-        #torch.nn.utils.clip_grap_norm_(model.paremeters(),1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
         # Do the optimizer step and update the parameters
         optimizer.step()
 
@@ -221,13 +222,13 @@ for epoch in range(EPOCHS):
     train_loss, preds = train()
 
     # To find out what happends with the accuracy per epoch
-    # writer.add_scalar('Training Loss', train_loss, epoch)
+    writer.add_scalar('Training Loss', train_loss, epoch)
 
     train_losses.append(train_loss)
     print(f'Training Loss: {train_loss:.3f}')
 torch.save(model.state_dict(), WEIGHTS_SAVE_PATH)
 
-# writer.close()
+writer.close()
 
 # model.load_state_dict(torch.load(WEIGHTS_SAVE_PATH))
 
