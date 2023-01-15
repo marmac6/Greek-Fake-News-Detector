@@ -1,97 +1,81 @@
-# %%
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import TensorDataset, RandomSampler, DataLoader
 
 import numpy as np
-import unicodedata
 import pandas as pd
+from pathlib import Path
 
+from sklearn import metrics
 from sklearn.utils import compute_class_weight
+from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score, roc_curve
-from sklearn.metrics import classification_report, confusion_matrix
 
 import transformers
 from transformers import AutoTokenizer, AutoModel
 
-import matplotlib.pyplot as plt
-
-# %% [markdown]
-# ### Preprocessing of data
-# 1. Text to lowercase
-# 2. Remove accents
-#
-# Ένας υπέροχος ποιητής -> ενας υπεροχος ποιητης
+from helpers import load_dataset
+from helpers import plot_roc_curve
+from helpers import generate_metrics
+from helpers import plot_confusion_matrix
+from helpers import preprocess_titles
+from helpers import strip_accents_and_lowercase
 
 
-# %%
-def strip_accents_and_lowercase(s):
-    if type(s) == str:
-        return ''.join(c for c in unicodedata.normalize('NFD', s)
-                       if unicodedata.category(c) != 'Mn').lower()
+DATASET = 'liar_translated'
+BATCH_SIZE = 64
+EPOCHS = 10
+DROPOUT = 0.4
+HIDDEN_SIZE = 512
+COMMENT = 'BN_NOLM_NOSTP'
+RUN_ID = f'{DATASET}_{BATCH_SIZE}_{EPOCHS}_{DROPOUT}_{HIDDEN_SIZE}_{COMMENT}'
+WEIGHTS_SAVE_PATH = f'weights/w_{RUN_ID}.pt'
+OUTPUTS_PATH = f'outputs/Neural_Networks/Mine/{RUN_ID}'
 
+# create output directory for current run
+Path(OUTPUTS_PATH).mkdir(exist_ok=False)
 
-# %%
-transformers.logging.set_verbosity_error(
-)  #δεν εχει λειτουργία κανει supress καποια warnings
+# suppress noisy warnings
+transformers.logging.set_verbosity_error()
 
 # Load model and tokenizer
-tokenizer_greek = AutoTokenizer.from_pretrained(
-    'nlpaueb/bert-base-greek-uncased-v1')
+tokenizer = AutoTokenizer.from_pretrained('nlpaueb/bert-base-greek-uncased-v1')
 lm_model_greek = AutoModel.from_pretrained(
     'nlpaueb/bert-base-greek-uncased-v1', return_dict=False)
 
-# %%
-df: pd.DataFrame = pd.read_csv('../Dataset/mixed.csv', delimiter=';')
-df = df.dropna()  # removes None values
+# Load dataset and preprocess
+dataset_df: pd.DataFrame = load_dataset(DATASET)
+# titles = dataset_df['title'].apply(preprocess_titles)
+titles = dataset_df['title'].apply(strip_accents_and_lowercase)
+labels = dataset_df['is_fake']
 
-# %%
-# Check that there are no nan values
-assert df.isnull().values.any() == False
+# split dataset to test and train data
+train_title, test_title, train_labels, test_labels = train_test_split(
+    titles, labels, random_state=2023, test_size=0.3, stratify=labels)
 
-# %%
-titles = df['title'].apply(strip_accents_and_lowercase)
-labels = df['is_fake']
+# ------ Tokenization ------
+# Get the number of words for every title in the train set
+num_of_words_per_title = [len(i.split()) for i in train_title]
+max_seq_len = int(np.percentile(num_of_words_per_title, 75))
 
-# %%
-# check labels distribution
-labels.value_counts(normalize=True)
+# pd.Series(num_of_words_per_title).hist(bins=30)
+# max_seq_len = 25
 
-# %%
-train_text, test_text, train_labels, test_labels = train_test_split(
-    titles, labels, random_state=2022, test_size=0.3, stratify=labels)
-
-# %%
-# Tokenizaion
-# Get the length of all the titles in the train set
-seq_len = [len(i.split()) for i in train_text]  # μέγεθος τίτλου σε λέξεις
-
-pd.Series(seq_len).hist(bins=30)  # δημιουργία ιστογράμματος των μεγεθών
-
-# %%
-# define max sequence lenght (why?)
-max_seq_len = 25
-
-# %%
 # tokenization and encoding of the sequences in the training and testing set
-tokens_train = tokenizer_greek.batch_encode_plus(train_text.tolist(),
-                                                 max_length=max_seq_len,
-                                                 padding='max_length',
-                                                 truncation=True,
-                                                 return_token_type_ids=False)
+tokens_train = tokenizer.batch_encode_plus(train_title.tolist(),
+                                           max_length=max_seq_len,
+                                           padding='max_length',
+                                           truncation=True,
+                                           return_token_type_ids=False)
 
-tokens_test = tokenizer_greek.batch_encode_plus(test_text.tolist(),
-                                                max_length=max_seq_len,
-                                                padding='max_length',
-                                                truncation=True,
-                                                return_token_type_ids=False)
+tokens_test = tokenizer.batch_encode_plus(test_title.tolist(),
+                                          max_length=max_seq_len,
+                                          padding='max_length',
+                                          truncation=True,
+                                          return_token_type_ids=False)
 
-# %%
 # Convert Integer Sequences to Tensors
-
 # For train set
 train_seq = torch.tensor(tokens_train['input_ids'])
 train_mask = torch.tensor(tokens_train['attention_mask'])
@@ -102,9 +86,6 @@ test_seq = torch.tensor(tokens_test['input_ids'])
 test_mask = torch.tensor(tokens_test['attention_mask'])
 test_y = torch.tensor(test_labels.tolist())
 
-# %%
-batch_size = 64
-epochs = 5
 
 # wrap tensors
 # the TensorDataset is a ready to use class to represent our data as a list of tensors
@@ -115,17 +96,14 @@ train_sampler = RandomSampler(train_data)
 
 train_dataloader = DataLoader(train_data,
                               sampler=train_sampler,
-                              batch_size=batch_size)
+                              batch_size=BATCH_SIZE)
 
-# %%
 # Freeze BERT parameters
 for param in lm_model_greek.parameters():
     param.requires_grad = False
 
-# %%
+
 # Define the Model Custom Architecture
-
-
 class BERT_Fake(nn.Module):
 
     def __init__(self, bert) -> None:
@@ -133,12 +111,14 @@ class BERT_Fake(nn.Module):
 
         self.bert = bert
         # DropoutLayer
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.8)
         # ReLU
         self.relu = nn.ReLU()
-        # Dense Layer 1
+        # Dense Layers
         self.fc1 = nn.Linear(768, 512)
         self.fc2 = nn.Linear(512, 2)
+        # Batch normalization
+        self.batch_norm = nn.BatchNorm1d(512)
         self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, send_id, mask):
@@ -147,32 +127,28 @@ class BERT_Fake(nn.Module):
 
         x = self.fc1(cls_hs)
         x = self.relu(x)
+        x = self.batch_norm(x)
         x = self.dropout(x)
         x = self.fc2(x)
         x = self.softmax(x)
 
         return x
 
-
-# %%
 # Pass the pre-trained BERT to our custom architecture
 model = BERT_Fake(lm_model_greek)
 
 # Push model to GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
-# %%
-optimizer = AdamW(model.parameters(), lr=1e-3)
-
-# %%
-# Compute the Class Weights
-# With class weighting enabled, the sum is replaced by a weighted sum instead so that each sample contributes to the loss proportionally to the sample's class weight
+# With class weighting enabled, the sum is replaced by a weighted sum
+# instead so that each sample contributes to the loss proportionally
+# to the sample's class weight
 class_weights = compute_class_weight(class_weight="balanced",
                                      classes=np.unique(train_labels),
                                      y=train_labels)
 
-# %%
 # Convert weights to tensors
 weights = torch.tensor(class_weights, dtype=torch.float)
 weigths = weights.to(device)
@@ -180,13 +156,9 @@ weigths = weights.to(device)
 criterion = nn.NLLLoss(weight=weights)
 criterion = criterion.to(device)
 
-# %%
 # writer = SummaryWriter('runs/greek-fake-news')
 
-
-# %%
 def train():
-
     model.train()
     total_loss, total_accuracy = 0, 0
 
@@ -201,16 +173,20 @@ def train():
 
         batch = [r.to(device) for r in batch]
         sent_id, mask, labels = batch
+        labels = labels.type(torch.LongTensor) 
+        labels = labels.to(device)
 
         # Forward
         outputs = model(sent_id, mask)
+        # with torch.autocast('cuda'):
+        #     loss = criterion(outputs, torch.tensor(labels).cuda())
         loss = criterion(outputs, labels)
 
         # Backward
         # Make the grads zero
         model.zero_grad()
         # Do the backward step of the loss calculation through chain derivatives
-        total_loss = total_loss + loss.item()
+        total_loss += loss.item()
         loss.backward()
 
         # Clip the gradients to 1.0. It helps in preventing the exploding gradient problem
@@ -236,15 +212,12 @@ def train():
     return avg_loss, total_preds
 
 
-# %%
 # model training
-best_valid_loss = float('inf')
-
 train_losses = []
 valid_losses = []
 
-for epoch in range(epochs):
-    print('Epoch {:} / {:}'.format(epoch + 1, epochs))
+for epoch in range(EPOCHS):
+    print('Epoch {:} / {:}'.format(epoch + 1, EPOCHS))
     train_loss, preds = train()
 
     # To find out what happends with the accuracy per epoch
@@ -252,61 +225,30 @@ for epoch in range(epochs):
 
     train_losses.append(train_loss)
     print(f'Training Loss: {train_loss:.3f}')
-torch.save(model.state_dict(), 'saved_weights.pt')
+torch.save(model.state_dict(), WEIGHTS_SAVE_PATH)
 
-# %%
 # writer.close()
 
-path = 'saved_weights.pt'
-model.load_state_dict(torch.load(path))
+# model.load_state_dict(torch.load(WEIGHTS_SAVE_PATH))
 
-# %%
 # Get Predictions for the Test Data
 with torch.no_grad():
     preds = model(test_seq.to(device), test_mask.to(device))
     preds = preds.detach().cpu().numpy()
 
-
-# %%
-def conf_to_metrics(conf):
-    tn, fp, fn, tp = conf.ravel()
-
-    accuracy = (tp + tn) / (tn + fp + fn + tp)
-    sensitivity = tp / (tp + fn)
-    specificity = tn / (tn + fp)
-    precision = tp / (tp + fp)
-    fscore = 2 * sensitivity * precision / (sensitivity + precision)
-    metrics = {
-        "accuracy": accuracy,
-        "precision": precision,
-        "sensitivity": sensitivity,
-        "specificity": specificity,
-        "fscore": fscore,
-    }
-    return metrics
-
-
-# %%
 preds = np.argmax(preds, axis=1)
 
-# %%
-conf = confusion_matrix(test_y, preds, labels=[0, 1])
-conf_to_metrics(conf)
+conf_matrix = metrics.confusion_matrix(test_y, preds)
 
-# %%
-# Plot ROC curve
-auc_score = roc_auc_score(test_y, preds)
-fpr, tpr, thresholds = roc_curve(test_y, preds, pos_label=1)
-fig, ax = plt.subplots()
-ax.plot(fpr, tpr, 'b', label='AUC = %.2f' % auc_score)
-ax.plot([0, 1], [0, 1], 'r--')
-ax.set_xlim([0, 1])
-ax.set_ylim([0, 1])
-ax.set_ylabel('Sensitivity')
-ax.set_xlabel('1 - Specificity')
-ax.legend(loc='lower right')
-nm = 'roc_curve' + str(round(auc_score, 3)) + '.svg'
-fig.savefig(nm)
+roc_name = f'{OUTPUTS_PATH}/roc_'
+metrics_name = f'{OUTPUTS_PATH}/metrics.txt'
+cm_name = f'{OUTPUTS_PATH}/cm.jpg'
 
-# %%
-print(classification_report(test_y, preds, target_names=['Fake', 'Real']))
+generate_metrics(conf_matrix, save_path=metrics_name, save=True, verbose=True)
+plot_confusion_matrix(conf_matrix,
+                      classes=['Real Data', 'Fake Data'],
+                      save_path=cm_name,
+                      save=True
+)
+plot_roc_curve(test_y, preds, roc_name=roc_name, save=True)
+# print(classification_report(test_y, preds, target_names=['Fake', 'Real']))
