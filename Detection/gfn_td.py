@@ -22,13 +22,15 @@ from helpers import plot_confusion_matrix
 from helpers import preprocess_titles
 from helpers import strip_accents_and_lowercase
 
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = 'max_split_size_mb:512'
 
 DATASET = 'greek'
 BATCH_SIZE = 64
-EPOCHS = 20
-DROPOUT = 0.5
+EPOCHS = 10
+DROPOUT = 0.2
 HIDDEN_SIZE = 512
-COMMENT = 'SIGMOID_BCE'
+COMMENT = 'LR4'
 RUN_ID = f'{DATASET}_{BATCH_SIZE}_{EPOCHS}_{DROPOUT}_{HIDDEN_SIZE}_{COMMENT}'
 WEIGHTS_SAVE_PATH = f'weights/w_{RUN_ID}.pt'
 OUTPUTS_PATH = f'outputs/Neural_Networks/Mine/{RUN_ID}'
@@ -123,18 +125,13 @@ class BERT_Fake(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, send_id, mask):
-        # pass inputs to model
         _, cls_hs = self.bert(send_id, attention_mask=mask)
-
         x = self.fc1(cls_hs)
         x = self.relu(x)
         x = self.batch_norm(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        # x = self.softmax(x)
-        # x = self.relu(x)
         x = self.sigmoid(x)
-        # exit()
         return x
 
 # Pass the pre-trained BERT to our custom architecture
@@ -175,12 +172,12 @@ def train():
                                                        len(train_dataloader)))
 
         batch = [r.to(device) for r in batch]
-        sent_id, mask, labels = batch
+        send_id, mask, labels = batch
         labels = labels.type(torch.LongTensor) 
         labels = labels.to(device)
 
         # Forward
-        outputs = model(sent_id, mask)
+        outputs = model(send_id, mask)
         loss = criterion(outputs, labels)
 
         # Backward
@@ -221,7 +218,7 @@ for epoch in range(EPOCHS):
     print('Epoch {:} / {:}'.format(epoch + 1, EPOCHS))
     train_loss, preds = train()
 
-    # To find out what happends with the accuracy per epoch
+    # To find out what happens with the accuracy per epoch
     writer.add_scalar('Training Loss', train_loss, epoch)
 
     train_losses.append(train_loss)
