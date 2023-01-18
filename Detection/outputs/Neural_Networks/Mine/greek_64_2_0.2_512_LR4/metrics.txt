@@ -1,0 +1,5 @@
+accuracy: 0.4534288638689867
+precision: 0.4534288638689867
+sensitivity: 1.0
+specificity: 0.0
+fscore: 0.6239436619718309
