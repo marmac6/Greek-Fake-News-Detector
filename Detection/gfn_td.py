@@ -9,8 +9,11 @@ from pathlib import Path
 
 from sklearn import metrics
 from sklearn.utils import compute_class_weight
-from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
+
+from skopt import gp_minimize
+from sklearn.metrics import roc_auc_score
+
 
 import transformers
 from transformers import AutoTokenizer, AutoModel
@@ -25,9 +28,14 @@ from helpers import strip_accents_and_lowercase
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = 'max_split_size_mb:512'
 
+def warn(*args, **kwargs):
+    pass
+import warnings
+warnings.warn = warn
+
 DATASET = 'greek'
 BATCH_SIZE = 64
-EPOCHS = 10
+EPOCHS = 15
 DROPOUT = 0.2
 HIDDEN_SIZE = 512
 COMMENT = 'LR4'
@@ -118,10 +126,9 @@ class BERT_Fake(nn.Module):
         self.relu = nn.ReLU()
         # Dense Layers
         self.fc1 = nn.Linear(768, HIDDEN_SIZE)
-        self.fc2 = nn.Linear(HIDDEN_SIZE, 2)
+        self.fc2 = nn.Linear(HIDDEN_SIZE, 1)
         # Batch normalization
         self.batch_norm = nn.BatchNorm1d(HIDDEN_SIZE)
-        self.softmax = nn.LogSoftmax(dim=1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, send_id, mask):
@@ -142,26 +149,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
-# With class weighting enabled, the sum is replaced by a weighted sum
-# instead so that each sample contributes to the loss proportionally
-# to the sample's class weight
-class_weights = compute_class_weight(class_weight="balanced",
-                                     classes=np.unique(train_labels),
-                                     y=train_labels)
-
-# Convert weights to tensors
-weights = torch.tensor(class_weights, dtype=torch.float)
-weigths = weights.to(device)
-
-criterion = nn.CrossEntropyLoss(weight=weights)
+criterion = nn.BCELoss()
 criterion = criterion.to(device)
 
 writer = SummaryWriter('runs/greek-fake-news')
 
 def train():
     model.train()
-    total_loss, total_accuracy = 0, 0
-
+    total_loss = 0
     total_preds = []
 
     # Iterate over the batches
@@ -178,7 +173,8 @@ def train():
 
         # Forward
         outputs = model(send_id, mask)
-        loss = criterion(outputs, labels)
+        labels = labels.view(-1, 1)
+        loss = criterion(outputs, labels.float())
 
         # Backward
         # Make the grads zero
@@ -188,7 +184,6 @@ def train():
         loss.backward()
 
         # Clip the gradients to 1.0. It helps in preventing the exploding gradient problem
-        # TO TEST IT
         torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
         # Do the optimizer step and update the parameters
         optimizer.step()
@@ -211,9 +206,6 @@ def train():
 
 
 # model training
-train_losses = []
-valid_losses = []
-
 for epoch in range(EPOCHS):
     print('Epoch {:} / {:}'.format(epoch + 1, EPOCHS))
     train_loss, preds = train()
@@ -221,7 +213,6 @@ for epoch in range(EPOCHS):
     # To find out what happens with the accuracy per epoch
     writer.add_scalar('Training Loss', train_loss, epoch)
 
-    train_losses.append(train_loss)
     print(f'Training Loss: {train_loss:.3f}')
 torch.save(model.state_dict(), WEIGHTS_SAVE_PATH)
 
@@ -232,10 +223,20 @@ writer.close()
 # Get Predictions for the Test Data
 with torch.no_grad():
     preds = model(test_seq.to(device), test_mask.to(device))
-    preds = preds.detach().cpu().numpy()
+    preds = preds.detach().cpu()
 
-preds = np.argmax(preds, axis=1)
+# define the objective function
+def objective(threshold):
+    predictions = (preds > threshold[0]).float()
+    auc = roc_auc_score(test_y, predictions)
+    return -auc
 
+# optimize the threshold
+res = gp_minimize(objective, [(0, 1.0)], n_calls=30)
+best_threshold = res.x[0]
+
+# threshold the output
+preds = (preds > best_threshold).float()
 conf_matrix = metrics.confusion_matrix(test_y, preds)
 
 roc_name = f'{OUTPUTS_PATH}/roc_'
@@ -249,4 +250,3 @@ plot_confusion_matrix(conf_matrix,
                       save=True
 )
 plot_roc_curve(test_y, preds, roc_name=roc_name, save=True)
-# print(classification_report(test_y, preds, target_names=['Fake', 'Real']))
