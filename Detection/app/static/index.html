@@ -1,118 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <!-- <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge"> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fake News Detection</title>
-    <link  rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
 
 
 
 </head>
+
 <body>
-<section class="sub-header">
-    <nav>
-        
-        <div class="nav-links" id="navLinks"> 
+    <section class="sub-header">
+        <nav>
+
+            <div class="nav-links" id="navLinks">
+            </div>
+
+
+        </nav>
+        <h1>Fake News Detection</h1>
+
+
+    </section>
+    <!-- -------------------------- MAIN -------------------------------- -->
+
+
+    <section class="main">
+        <div class="row">
+
+            <div class="main-col">
+                <textarea maxlength="105" rows="8" placeholder="Enter here the text you want to check" id="user-input"
+                    required></textarea>
+                <p id="result-percentage"></p>
+                <button type="submit" class="hero-btn red-btn" onclick="sendRequest()">Calculate Accuracy</button>
+            </div>
         </div>
-        
-        
-    </nav>
-    <h1>Fake News Detection</h1>
-
-
-</section>
-<!-- -------------------------- MAIN -------------------------------- -->
-
-
-<section class="main">
-    <div class="row">
-        
-        <div class="main-col">
-            <textarea maxlength="105" rows="8" placeholder="Enter here the text you want to check" id="user-input" required></textarea>
-            <p id="result-percentage"></p>
-            <button type="submit" class="hero-btn red-btn" onclick="sendRequest()">Calculate Accuracy</button>
-        </div>
-    </div>
-    <script>
-        function colorResult(percentage){
-            var par = document.getElementById("result-percentage")
-            par.innerHTML = `The result is ${percentage}`
-            if (percentage > 50) {
-                par.style.color = "green"; 
-            }else{
-                par.style.color = "red"
+        <script>
+            function colorResult(percentage) {
+                var par = document.getElementById("result-percentage")
+                par.innerHTML = `This news title has ${percentage} propability of being fake`
+                if (percentage > 50) {
+                    par.style.color = "red";
+                } else {
+                    par.style.color = "green"
+                }
             }
-        }
-        
-        function sendRequest(){
-            fetch('http://localhost:8000/predict', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({"title": document.getElementById("user-input").value})
-            })
-            .then((response) => response.json())
-            .then((data) =>{
-                // var result_place = document.getElementById("result-percentage")
-                // result_place.innerHTML = data
-                colorResult(data)
-            })
-            
-            .catch(error => console.log('error', error));
-        }
 
-        
+            function sendRequest() {
+                fetch('http://localhost:8000/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ "title": document.getElementById("user-input").value })
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        // var result_place = document.getElementById("result-percentage")
+                        // result_place.innerHTML = data
+                        colorResult(data)
+                    })
+
+                    .catch(error => console.log('error', error));
+            }
+
+
+        </script>
+
+    </section>
+
+
+    <!-- ----------------footer---------------------------------- -->
+    <section class="footer">
+        <h4>Footer</h4>
+        <p>This is a site made for the purposes of my thesis</p>
+
+        <div class="icons">
+            <i class="glyphicon glyphicon-link"></i>
+            <i class="glyphicon glyphicon-qrcode"></i>
+            <i class="glyphicon glyphicon-envelope"></i>
+            <i class="glyphicon glyphicon-user"></i>
+        </div>
+        <p>Made by my incredible self, Maria Makrynioti</i> </p>
+
+    </section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- -----------JavaScript for Toggle Menu ------------ -->
+    <script>
+        var navLinks = document.getElementById("navLinks");
+        function showMenu() {
+            navLinks.style.right = "0";
+        }
+        function hideMenu() {
+            navLinks.style.right = "-200px";
+        }
     </script>
-        
-</section>
-
-
-<!-- ----------------footer---------------------------------- -->
-<section class="footer">
-    <h4>Footer</h4>
-    <p>This is a site made for the purposes of my thesis</p>
-
-    <div class="icons">
-        <i class="glyphicon glyphicon-link"></i>
-        <i class="glyphicon glyphicon-qrcode"></i>
-        <i class="glyphicon glyphicon-envelope"></i>
-        <i class="glyphicon glyphicon-user"></i>
-    </div>
-    <p>Made by my incredible self, Maria Makrynioti</i> </p>
-
-</section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- -----------JavaScript for Toggle Menu ------------ -->
-<script>
-    var navLinks = document.getElementById("navLinks");
-    function showMenu(){
-        navLinks.style.right="0";
-    }
-    function hideMenu(){
-        navLinks.style.right="-200px";
-    }
-</script>
 </body>
+
 </html>
