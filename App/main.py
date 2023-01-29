@@ -23,6 +23,10 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def send_predict(news: News):
+    return "Hi"
+
 @app.post("/predict")
 def send_predict(news: News):
     print(news.title)
