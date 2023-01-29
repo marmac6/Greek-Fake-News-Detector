@@ -3,6 +3,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
+from predict import calculate_possibility
+
 
 class News(BaseModel):
     title: str
@@ -23,13 +25,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def send_predict(news: News):
-    return "Hi"
-
 @app.post("/predict")
 def send_predict(news: News):
-    print(news.title)
-    return 90
-
-
+    fake_possibility = calculate_possibility(news.title)
+    return int(fake_possibility*100)

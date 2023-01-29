@@ -14,7 +14,6 @@ from sklearn.model_selection import train_test_split
 from skopt import gp_minimize
 from sklearn.metrics import roc_auc_score
 
-
 import transformers
 from transformers import AutoTokenizer, AutoModel
 
@@ -24,6 +23,8 @@ from helpers import generate_metrics
 from helpers import plot_confusion_matrix
 from helpers import preprocess_titles
 from helpers import strip_accents_and_lowercase
+
+from bert_fake_model import BERT_Fake
 
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = 'max_split_size_mb:512'
@@ -113,36 +114,9 @@ for param in lm_model_greek.parameters():
     param.requires_grad = False
 
 
-# Define the Model Custom Architecture
-class BERT_Fake(nn.Module):
-
-    def __init__(self, bert) -> None:
-        super(BERT_Fake, self).__init__()
-
-        self.bert = bert
-        # DropoutLayer
-        self.dropout = nn.Dropout(DROPOUT)
-        # ReLU
-        self.relu = nn.ReLU()
-        # Dense Layers
-        self.fc1 = nn.Linear(768, HIDDEN_SIZE)
-        self.fc2 = nn.Linear(HIDDEN_SIZE, 1)
-        # Batch normalization
-        self.batch_norm = nn.BatchNorm1d(HIDDEN_SIZE)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, send_id, mask):
-        _, cls_hs = self.bert(send_id, attention_mask=mask)
-        x = self.fc1(cls_hs)
-        x = self.relu(x)
-        x = self.batch_norm(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
-        x = self.sigmoid(x)
-        return x
-
 # Pass the pre-trained BERT to our custom architecture
-model = BERT_Fake(lm_model_greek)
+# model = BERT_Fake(lm_model_greek)
+model = BERT_Fake(lm_model_greek, DROPOUT, HIDDEN_SIZE)
 
 # Push model to GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
